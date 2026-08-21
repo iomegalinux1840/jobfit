@@ -61,6 +61,19 @@ export OPENROUTER_API_KEY="..."
 jobfit run --resume /path/to/resume.docx --provider openrouter --model openai/gpt-4.1-mini
 ```
 
+To troubleshoot one provider without sending a resume or collecting jobs, run
+a minimal JSON probe:
+
+```bash
+jobfit diagnose-llm --provider openrouter --model openai/gpt-4.1-mini
+```
+
+The diagnostic reports the endpoint, model, HTTP timing, response keys,
+choice/output structure, finish reason, extracted-text path, character count,
+and JSON parsing result. It never prints the prompt, resume, API key, or model
+response text. The same redacted diagnostic events appear in the TUI during a
+normal scan for OpenAI, OpenRouter, Anthropic, xAI, Gemini, and Ollama.
+
 For a local reference of the supported environment variables, see
 `.env.example`. It intentionally contains no credentials. Do not commit a
 real `.env` file, a resume, scraped job exports, or the local SQLite database.

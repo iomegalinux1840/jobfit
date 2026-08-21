@@ -194,7 +194,9 @@ def build_profile(
             f"LLM stage: parsing resume with {provider_label(config.provider)} "
             f"({config.model})"
         )
-    profile_data = complete_profile_json(_profile_prompt(resume_text), config)
+    profile_data = complete_profile_json(
+        _profile_prompt(resume_text), config, diagnostic=progress
+    )
     try:
         return profile_from_json(profile_data, resume_text)
     except (AttributeError, TypeError, ValueError) as exc:
