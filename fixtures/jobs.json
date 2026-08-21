@@ -1,0 +1,44 @@
+[
+  {
+    "site": "fixture",
+    "title": "Manufacturing AI & Automation Specialist",
+    "company": "Northstar Manufacturing",
+    "job_url": "https://example.com/jobs/northstar-manufacturing-ai",
+    "location": "Montreal, QC",
+    "is_remote": false,
+    "min_amount": 95000,
+    "max_amount": 120000,
+    "interval": "yearly",
+    "currency": "CAD",
+    "description": "Lead manufacturing AI and workflow automation initiatives. Use Python, LLMs, machine learning, Docker, ERP and data systems to improve procurement and operations. Work with plant stakeholders and translate operational needs into reliable internal tools.",
+    "date_posted": "2026-08-20"
+  },
+  {
+    "site": "fixture",
+    "title": "Senior Procurement Systems Engineer",
+    "company": "Atlas Industrial",
+    "job_url": "https://example.com/jobs/atlas-procurement",
+    "location": "Quebec, QC",
+    "is_remote": true,
+    "min_amount": 90000,
+    "max_amount": 115000,
+    "interval": "yearly",
+    "currency": "CAD",
+    "description": "Build procurement automation and ERP integrations. Business Central, Python, PostgreSQL, APIs, data workflows and supplier collaboration are important. Experience with manufacturing operations is valued.",
+    "date_posted": "2026-08-19"
+  },
+  {
+    "site": "fixture",
+    "title": "Backend Developer",
+    "company": "Generic Software Co.",
+    "job_url": "https://example.com/jobs/generic-backend",
+    "location": "Toronto, ON",
+    "is_remote": false,
+    "min_amount": 80000,
+    "max_amount": 105000,
+    "interval": "yearly",
+    "currency": "CAD",
+    "description": "Maintain a web application and write services in Python. Familiarity with SQL and Docker is helpful.",
+    "date_posted": "2026-08-18"
+  }
+]

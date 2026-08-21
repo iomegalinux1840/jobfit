@@ -1,0 +1,11 @@
+Alex Candidate
+
+Manufacturing AI and automation specialist with 10 years of experience in
+manufacturing operations, procurement automation, and internal data systems.
+
+Skills: Python, LLMs, machine learning, RAG, FastAPI, Docker, PostgreSQL,
+Business Central, ERP, automation, manufacturing, procurement, and data systems.
+
+Target roles: AI engineer, applied AI engineer, manufacturing automation
+engineer, procurement automation engineer. Based in Montreal and open to
+hybrid or remote work.
