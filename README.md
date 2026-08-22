@@ -61,6 +61,19 @@ export OPENROUTER_API_KEY="..."
 jobfit run --resume /path/to/resume.docx --provider openrouter --model openai/gpt-4.1-mini
 ```
 
+To troubleshoot one provider without sending a resume or collecting jobs, run
+a minimal JSON probe:
+
+```bash
+jobfit diagnose-llm --provider openrouter --model openai/gpt-4.1-mini
+```
+
+The diagnostic reports the endpoint, model, HTTP timing, response keys,
+choice/output structure, finish reason, extracted-text path, character count,
+and JSON parsing result. It never prints the prompt, resume, API key, or model
+response text. The same redacted diagnostic events appear in the TUI during a
+normal scan for OpenAI, OpenRouter, Anthropic, xAI, Gemini, and Ollama.
+
 For a local reference of the supported environment variables, see
 `.env.example`. It intentionally contains no credentials. Do not commit a
 real `.env` file, a resume, scraped job exports, or the local SQLite database.
@@ -72,7 +85,18 @@ heuristic parser. Keys are read only from environment variables:
 and `GEMINI_API_KEY`.
 
 Selecting a cloud provider sends the resume text to that provider for profile
-extraction. Use `heuristic` or Ollama when the resume must remain local.
+extraction. Before that call, JobFit performs a local, deterministic English and
+French privacy pass that replaces detected names in the resume header, email
+addresses, phone numbers, labelled social/identity numbers, personal profile
+URLs, and contact-address lines. The original resume is not sent by this
+step; the redacted text is used only for cloud profile extraction. This is a
+best-effort aid, not a guarantee of anonymization. Use `heuristic` or Ollama
+when the resume must remain fully local.
+
+The progress panel reports only redaction categories and counts, never the
+matched values. JobFit deliberately does not use an LLM to find the PII before
+the privacy boundary. Names in work history and ordinary job locations are
+preserved unless they match the locally detected header name.
 
 When a scan is running, the top progress panel reports resume loading, LLM
 profile parsing, query generation, selected sources, parallel JobSpy
@@ -83,14 +107,18 @@ results per source, parallel workers, Indeed country, `Easy Apply only`, and
 annual-salary normalization. You can also enable full LinkedIn description
 fetching, which is slower but gives JobSpy more text from which to recover
 salary information. These settings are saved in the local SQLite database and
-reused on the next launch. Locations are geocoded only when the distance
-filter is enabled, cached in SQLite, and jobs with unknown distance
+reused on the next launch. The results table opens in `DIFF` mode and shows
+new or updated jobs. Press `V` to toggle to `ALL HISTORY`, which loads the
+deduplicated jobs persisted in SQLite, including jobs not returned by the
+latest scan. Running a new scan returns the table to `DIFF` mode. Locations
+are geocoded only when the distance filter is enabled, cached in SQLite, and
+jobs with unknown distance
 remain visible with `—` so the app does not silently discard them. Press `R`
-to re-run, `P` to focus the provider selector, use the arrow keys to select a
-job, press `Space` to save or unsave its company, press `D` to remove the row
-or block its company, and press `Enter` to open its detail page or return to
-the results. Saved companies are shown in bold; blocked companies are
-excluded from later scans.
+to re-run, `P` to focus the provider selector, `V` to toggle diff/history, use
+the arrow keys to select a job, press `Space` to save or unsave its company,
+press `D` to remove the row or block its company, and press `Enter` to open its
+detail page or return to the results. Saved companies are shown in bold;
+blocked companies are excluded from later scans.
 
 The results table includes the normalized source (`SOURCE`), remote status,
 easy-apply flag, distance, and salary. With annual normalization enabled,

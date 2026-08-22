@@ -30,6 +30,25 @@ def test_store_shows_new_then_unchanged_then_updated(tmp_path):
     assert (third.new, third.updated, third.unchanged) == (0, 1, 0)
 
 
+def test_store_loads_deduplicated_history_with_saved_company_state(tmp_path):
+    store = JobStore(str(tmp_path / "history.sqlite"))
+    first = _result()
+    second = _result("Python, automation and LLMs")
+    second.job.job_id = "fixture:2"
+    second.job.title = "Another Automation Engineer"
+    store.record_run(2, [first, second])
+    store.toggle_saved_company("Acme")
+
+    history = store.load_history()
+    store.close()
+
+    assert len(history) == 2
+    assert {item.job.job_id for item in history} == {"fixture:1", "fixture:2"}
+    assert all(item.change_status == "HISTORY" for item in history)
+    assert all(item.company_saved for item in history)
+    assert history[0].job.description
+
+
 def test_saved_and_blocked_companies_are_persistent(tmp_path):
     store = JobStore(str(tmp_path / "preferences.sqlite"))
     assert store.toggle_saved_company(" Acme  Inc. ") is True

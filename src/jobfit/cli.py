@@ -5,7 +5,12 @@ import os
 import sys
 
 from .pipeline import run_pipeline
-from .providers import PROVIDER_SPECS
+from .providers import (
+    PROVIDER_SPECS,
+    ProviderError,
+    complete_profile_json,
+    resolve_config,
+)
 from .sources import SITE_LABELS, JobSpyUnavailable
 
 
@@ -52,6 +57,18 @@ def _parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--ollama-model")
     run.add_argument("--no-tui", action="store_true")
+    diagnose = subparsers.add_parser(
+        "diagnose-llm",
+        help="send a minimal JSON probe and print redacted provider diagnostics",
+    )
+    diagnose.add_argument(
+        "--provider",
+        choices=[key for key in PROVIDER_SPECS if key != "heuristic"],
+        default=os.getenv("JOBFIT_LLM_PROVIDER", "openrouter"),
+    )
+    diagnose.add_argument(
+        "--model", help="provider model override; also honors JOBFIT_MODEL"
+    )
     return parser
 
 
@@ -76,7 +93,9 @@ def _print_results(profile, summary) -> None:
 
 def main(argv=None) -> int:
     args = _parser().parse_args(argv)
-    if args.command != "run":
+    if args.command == "diagnose-llm":
+        return _diagnose_llm(args.provider, args.model)
+    if args.command != "run":  # pragma: no cover - argparse enforces commands
         return 2
 
     def execute(progress=None, provider_override=None, settings_override=None):
@@ -118,6 +137,29 @@ def main(argv=None) -> int:
     except (FileNotFoundError, ValueError, RuntimeError, JobSpyUnavailable) as exc:
         print(f"jobfit: {exc}", file=sys.stderr)
         return 1
+    return 0
+
+
+def _diagnose_llm(provider: str, model: str | None) -> int:
+    """Run a provider-only probe without loading a resume or collecting jobs."""
+    events = []
+
+    def report(message: str) -> None:
+        events.append(message)
+        print(message)
+
+    config = resolve_config(provider, model)
+    print(
+        f"JOBFIT LLM DIAGNOSTIC — {provider} / {config.model}\n"
+        "No resume or job-search request is sent by this command."
+    )
+    prompt = 'Return only this JSON object: {"ok":true}'
+    try:
+        result = complete_profile_json(prompt, config, diagnostic=report)
+    except (ProviderError, RuntimeError) as exc:
+        print(f"RESULT: FAIL — {exc}", file=sys.stderr)
+        return 1
+    print(f"RESULT: PASS — JSON keys=[{', '.join(sorted(result))}]")
     return 0
 
 
