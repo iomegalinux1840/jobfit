@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from jobfit.models import Profile
 from jobfit.pipeline import run_pipeline
 from jobfit.store import JobStore
 
@@ -42,3 +43,36 @@ def test_pipeline_excludes_blocked_companies(tmp_path):
 
     assert summary.unique == 2
     assert all("northstar" not in result.job.company.lower() for result in summary.diff)
+
+
+def test_pipeline_sends_redacted_resume_to_cloud_provider(monkeypatch, tmp_path):
+    root = Path(__file__).parents[1]
+    resume = tmp_path / "resume.txt"
+    resume.write_text(
+        "Jane Doe\njane.doe@example.com | +1 514-555-1234\n"
+        "Python, manufacturing, and automation\n",
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_build_profile(resume_text, provider, model, progress):
+        captured["text"] = resume_text
+        captured["provider"] = provider
+        return Profile(name="Candidate", skills=["python"])
+
+    monkeypatch.setattr("jobfit.pipeline.build_profile", fake_build_profile)
+    messages = []
+    run_pipeline(
+        str(resume),
+        str(tmp_path / "jobs.sqlite"),
+        fixture_path=str(root / "fixtures" / "jobs.json"),
+        llm_provider="openai",
+        progress=messages.append,
+    )
+
+    assert captured["provider"] == "openai"
+    assert "Jane Doe" not in captured["text"]
+    assert "jane.doe@example.com" not in captured["text"]
+    assert "514-555-1234" not in captured["text"]
+    assert "Python, manufacturing, and automation" in captured["text"]
+    assert any("privacy redaction" in message for message in messages)

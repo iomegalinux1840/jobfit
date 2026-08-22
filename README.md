@@ -85,7 +85,18 @@ heuristic parser. Keys are read only from environment variables:
 and `GEMINI_API_KEY`.
 
 Selecting a cloud provider sends the resume text to that provider for profile
-extraction. Use `heuristic` or Ollama when the resume must remain local.
+extraction. Before that call, JobFit performs a local, deterministic English and
+French privacy pass that replaces detected names in the resume header, email
+addresses, phone numbers, labelled social/identity numbers, personal profile
+URLs, and contact-address lines. The original resume is not sent by this
+step; the redacted text is used only for cloud profile extraction. This is a
+best-effort aid, not a guarantee of anonymization. Use `heuristic` or Ollama
+when the resume must remain fully local.
+
+The progress panel reports only redaction categories and counts, never the
+matched values. JobFit deliberately does not use an LLM to find the PII before
+the privacy boundary. Names in work history and ordinary job locations are
+preserved unless they match the locally detected header name.
 
 When a scan is running, the top progress panel reports resume loading, LLM
 profile parsing, query generation, selected sources, parallel JobSpy

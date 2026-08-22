@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from .agent import build_profile, build_query_plan
 from .geo import filter_jobs_by_distance
 from .models import Profile, RunSummary, ScanSettings
+from .privacy import CLOUD_PROVIDERS, redact_for_cloud
 from .resume import load_resume_text
 from .scoring import score_job
 from .sources import FixtureSource, JobSpySource, deduplicate_jobs
@@ -56,9 +57,16 @@ def run_pipeline(
         "ollama" if ollama_model and llm_provider == "heuristic" else llm_provider
     )
     selected_model = ollama_model or llm_model
+    profile_text = resume_text
+    if selected_provider in CLOUD_PROVIDERS:
+        redaction = redact_for_cloud(resume_text)
+        report(f"LOCAL stage: privacy redaction — {redaction.summary()}")
+        profile_text = redaction.text
+    else:
+        report("LOCAL stage: privacy redaction skipped — provider stays local")
     started = time.perf_counter()
     profile = build_profile(
-        resume_text,
+        profile_text,
         provider=selected_provider,
         model=selected_model,
         progress=report,
