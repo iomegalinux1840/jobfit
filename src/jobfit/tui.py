@@ -292,6 +292,7 @@ def build_textual_app(
             ("s", "open_settings", "Settings"),
             ("space", "toggle_saved", "Save company"),
             ("d", "remove_or_block", "Remove/block"),
+            ("v", "toggle_view", "Diff/all"),
             ("b", "back_to_results", "Back from detail"),
             ("q", "quit", "Quit"),
             ("escape", "back_or_quit", "Back/Quit"),
@@ -318,6 +319,8 @@ def build_textual_app(
             if initial_max_distance_km is not None:
                 self.settings.max_distance_km = initial_max_distance_km
             self.last_results = []
+            self.diff_results = []
+            self.view_mode = "diff"
             self.scan_active = False
 
         def compose(self) -> ComposeResult:
@@ -336,7 +339,7 @@ def build_textual_app(
             yield Static(
                 "[↑↓] select   [Enter] detail/back   [Space] save company   "
                 "[D] remove/block   [R] re-scan   [P] provider   [S] settings   "
-                "[B/Esc] back   [Q] quit",
+                "[V] diff/all   [B/Esc] back   [Q] quit",
                 id="bottom-keymap",
             )
             yield Footer()
@@ -362,6 +365,8 @@ def build_textual_app(
             if self.scan_active:
                 return
             self.scan_active = True
+            self.view_mode = "diff"
+            self.diff_results = []
             self.last_results = []
             self.query_one("#progress", Log).clear()
             self.query_one("#jobs", DataTable).clear()
@@ -462,12 +467,50 @@ def build_textual_app(
 
         def _show_results(self, profile: Profile, summary: RunSummary) -> None:
             self.scan_active = False
+            self.view_mode = "diff"
+            self.diff_results = list(summary.diff)
             self.last_results = list(summary.diff)
             self._populate_table()
+            self._update_view_brand()
             self.query_one("#progress", Log).write_line(
                 f"[✓] Difference calculated: {summary.new} new jobs, "
                 f"{summary.updated} updated"
             )
+            self.query_one("#jobs", DataTable).focus()
+
+        def _update_view_brand(self) -> None:
+            label = (
+                "DIFF — NEW / UPDATED" if self.view_mode == "diff" else "ALL HISTORY"
+            )
+            self.query_one("#brand", Static).update(f"JOBFIT — {label}")
+
+        def action_toggle_view(self) -> None:
+            if self.scan_active or self.query_one("#detail", Static).display:
+                return
+            if not database_path:
+                self._append_progress("All history requires a database path")
+                return
+            if self.view_mode == "diff":
+                store = JobStore(database_path)
+                try:
+                    history = store.load_history()
+                finally:
+                    store.close()
+                self.view_mode = "all"
+                self.last_results = history
+                self._populate_table()
+                self._update_view_brand()
+                self._append_progress(
+                    f"View: ALL HISTORY — {len(history)} deduplicated saved jobs"
+                )
+            else:
+                self.view_mode = "diff"
+                self.last_results = list(self.diff_results)
+                self._populate_table()
+                self._update_view_brand()
+                self._append_progress(
+                    f"View: DIFF — {len(self.last_results)} new or updated jobs"
+                )
             self.query_one("#jobs", DataTable).focus()
 
         def _populate_table(self) -> None:
@@ -508,6 +551,9 @@ def build_textual_app(
                 store.close()
             target = company_key(result.job.company)
             for item in self.last_results:
+                if company_key(item.job.company) == target:
+                    item.company_saved = saved
+            for item in self.diff_results:
                 if company_key(item.job.company) == target:
                     item.company_saved = saved
             self._populate_table()
@@ -609,7 +655,7 @@ def build_textual_app(
             self.query_one("#progress", Log).display = False
 
         def _show_main(self) -> None:
-            self.query_one("#brand", Static).update("JOBFIT — Personal Job Radar")
+            self._update_view_brand()
             self.query_one("#detail", Static).display = False
             self.query_one("#progress", Log).display = True
             table = self.query_one("#jobs", DataTable)

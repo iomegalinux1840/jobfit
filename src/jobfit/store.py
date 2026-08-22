@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import FitResult, RunSummary, ScanSettings
+from .models import FitResult, JobPosting, RunSummary, ScanSettings
 from .scoring import SCORE_VERSION
 
 
@@ -372,6 +372,70 @@ class JobStore:
         except Exception:
             self.connection.rollback()
             raise
+
+    def load_history(self) -> list[FitResult]:
+        """Load the deduplicated job history currently persisted in SQLite."""
+        rows = self.connection.execute(
+            """
+            SELECT job_id, source, title, company, url, location, description,
+                   date_posted, salary_min, salary_max, salary_interval,
+                   salary_currency, is_remote, easy_apply, latitude, longitude,
+                   distance_km, score, matched_skills, missing_skills,
+                   matched_domains, reasons
+            FROM jobs
+            ORDER BY score DESC, lower(title), lower(company)
+            """
+        )
+        saved = self.saved_companies()
+
+        def json_list(value: object) -> list[str]:
+            try:
+                parsed = json.loads(value or "[]")
+            except (TypeError, ValueError):
+                return []
+            if not isinstance(parsed, list):
+                return []
+            return [str(item) for item in parsed]
+
+        history: list[FitResult] = []
+        for row in rows:
+            company = str(row["company"] or "")
+            job = JobPosting(
+                job_id=str(row["job_id"]),
+                source=str(row["source"] or ""),
+                title=str(row["title"] or ""),
+                company=company,
+                url=str(row["url"] or ""),
+                location=str(row["location"] or ""),
+                description=str(row["description"] or ""),
+                date_posted=str(row["date_posted"] or ""),
+                is_remote=(
+                    None if row["is_remote"] is None else bool(row["is_remote"])
+                ),
+                salary_min=row["salary_min"],
+                salary_max=row["salary_max"],
+                salary_interval=str(row["salary_interval"] or ""),
+                salary_currency=str(row["salary_currency"] or ""),
+                easy_apply=(
+                    None if row["easy_apply"] is None else bool(row["easy_apply"])
+                ),
+                latitude=row["latitude"],
+                longitude=row["longitude"],
+                distance_km=row["distance_km"],
+            )
+            history.append(
+                FitResult(
+                    job=job,
+                    score=int(row["score"] or 0),
+                    matched_skills=json_list(row["matched_skills"]),
+                    missing_skills=json_list(row["missing_skills"]),
+                    matched_domains=json_list(row["matched_domains"]),
+                    reasons=json_list(row["reasons"]),
+                    change_status="HISTORY",
+                    company_saved=company_key(company) in saved,
+                )
+            )
+        return history
 
     def close(self) -> None:
         self.connection.close()
