@@ -49,7 +49,7 @@ def build_textual_app(
     """Build the Textual app class so it can be exercised with App.run_test()."""
     try:
         from textual.app import App, ComposeResult
-        from textual.containers import Horizontal, VerticalScroll
+        from textual.containers import Horizontal, Vertical, VerticalScroll
         from textual.screen import ModalScreen
         from textual.widgets import (
             Button,
@@ -68,7 +68,13 @@ def build_textual_app(
     class RemoveChoiceScreen(ModalScreen):
         CSS = """
         RemoveChoiceScreen { align: center middle; }
-        #remove-dialog { width: 70; height: 11; border: round #c09cff; background: #171827; padding: 1 2; }
+        #remove-dialog { width: 74; height: auto; border: round #c09cff; background: #171827; padding: 1 2; }
+        #remove-title { color: #ffcc66; text-style: bold; }
+        #remove-company { color: #d8d9f0; margin-bottom: 1; }
+        #remove-options { height: auto; }
+        #remove-options Button { width: 1fr; margin: 0 0 1 0; }
+        #remove-options Button:focus { background: #c09cff; color: #171827; text-style: bold; }
+        #remove-cancel { width: 1fr; }
         """
         BINDINGS: ClassVar = [
             ("r", "remove_only", "Remove row"),
@@ -81,13 +87,33 @@ def build_textual_app(
             self.company = company
 
         def compose(self) -> ComposeResult:
-            yield Static(
-                f"REMOVE OPPORTUNITY\n\n{self.company}\n\n"
-                "[R] remove this row only\n"
-                "[B] remove row and block this company\n"
-                "[Esc] cancel",
+            yield Vertical(
+                Static("REMOVE OPPORTUNITY", id="remove-title"),
+                Static(self.company, id="remove-company"),
+                Vertical(
+                    Button("[R] Remove this job offer only", id="remove-only"),
+                    Button(
+                        "[B] Remove offer and block this company",
+                        id="block-company",
+                    ),
+                    id="remove-options",
+                ),
+                Button("[Esc] Cancel", id="remove-cancel"),
                 id="remove-dialog",
             )
+
+        def on_mount(self) -> None:
+            self.query_one("#remove-only", Button).focus()
+
+        def on_button_pressed(self, event: Button.Pressed) -> None:
+            actions = {
+                "remove-only": self.action_remove_only,
+                "block-company": self.action_block_company,
+                "remove-cancel": self.action_cancel,
+            }
+            action = actions.get(event.button.id)
+            if action:
+                action()
 
         def action_remove_only(self) -> None:
             self.dismiss("remove")

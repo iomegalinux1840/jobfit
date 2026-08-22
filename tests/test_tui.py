@@ -105,6 +105,10 @@ async def _exercise_company_actions(database_path):
 
         await pilot.press("d")
         await pilot.pause()
+        remove_screen = app.screen
+        assert remove_screen.query_one("#remove-only").has_focus
+        await pilot.press("tab")
+        assert remove_screen.query_one("#block-company").has_focus
         await pilot.press("b")
         await pilot.pause()
 
