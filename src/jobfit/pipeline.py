@@ -134,10 +134,16 @@ def run_pipeline(
     salary_count = sum(
         job.salary_min is not None or job.salary_max is not None for job in unique_jobs
     )
+    description_salary_count = sum(
+        job.salary_source == "description" for job in unique_jobs
+    )
+    structured_salary_count = salary_count - description_salary_count
     company_count = sum(bool(job.company) for job in unique_jobs)
     report(
         "LOCAL stage: normalized metadata — "
         f"salary on {salary_count}/{len(unique_jobs)}, "
+        f"structured {structured_salary_count}, "
+        f"description fallback {description_salary_count}, "
         f"company on {company_count}/{len(unique_jobs)}"
     )
     report(

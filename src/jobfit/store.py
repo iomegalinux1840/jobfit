@@ -75,6 +75,7 @@ class JobStore:
               salary_max REAL,
               salary_interval TEXT,
               salary_currency TEXT,
+              salary_source TEXT,
               is_remote INTEGER,
               easy_apply INTEGER,
               latitude REAL,
@@ -122,6 +123,7 @@ class JobStore:
             "salary_max": "ALTER TABLE jobs ADD COLUMN salary_max REAL",
             "salary_interval": "ALTER TABLE jobs ADD COLUMN salary_interval TEXT",
             "salary_currency": "ALTER TABLE jobs ADD COLUMN salary_currency TEXT",
+            "salary_source": "ALTER TABLE jobs ADD COLUMN salary_source TEXT",
             "is_remote": "ALTER TABLE jobs ADD COLUMN is_remote INTEGER",
             "easy_apply": "ALTER TABLE jobs ADD COLUMN easy_apply INTEGER",
             "latitude": "ALTER TABLE jobs ADD COLUMN latitude REAL",
@@ -310,14 +312,15 @@ class JobStore:
                 self.connection.execute(
                     """
                 INSERT INTO jobs(job_id, source, title, company, url, location, description, date_posted,
-                  salary_min, salary_max, salary_interval, salary_currency, is_remote, easy_apply, latitude, longitude, distance_km, score,
+                  salary_min, salary_max, salary_interval, salary_currency, salary_source, is_remote, easy_apply, latitude, longitude, distance_km, score,
                   matched_skills, missing_skills, matched_domains, reasons, score_version, content_hash, first_seen, last_seen, last_run_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(job_id) DO UPDATE SET
                   source=excluded.source, title=excluded.title, company=excluded.company, url=excluded.url,
                   location=excluded.location, description=excluded.description, date_posted=excluded.date_posted,
                   salary_min=excluded.salary_min, salary_max=excluded.salary_max, salary_interval=excluded.salary_interval,
-                  salary_currency=excluded.salary_currency, is_remote=excluded.is_remote, easy_apply=excluded.easy_apply,
+                  salary_currency=excluded.salary_currency, salary_source=excluded.salary_source,
+                  is_remote=excluded.is_remote, easy_apply=excluded.easy_apply,
                   latitude=excluded.latitude,
                   longitude=excluded.longitude, distance_km=excluded.distance_km,
                   score=excluded.score, matched_skills=excluded.matched_skills, missing_skills=excluded.missing_skills,
@@ -338,6 +341,7 @@ class JobStore:
                         job.salary_max,
                         job.salary_interval,
                         job.salary_currency,
+                        job.salary_source,
                         None if job.is_remote is None else int(job.is_remote),
                         None if job.easy_apply is None else int(job.easy_apply),
                         job.latitude,
@@ -379,7 +383,7 @@ class JobStore:
             """
             SELECT job_id, source, title, company, url, location, description,
                    date_posted, salary_min, salary_max, salary_interval,
-                   salary_currency, is_remote, easy_apply, latitude, longitude,
+                   salary_currency, salary_source, is_remote, easy_apply, latitude, longitude,
                    distance_km, score, matched_skills, missing_skills,
                    matched_domains, reasons
             FROM jobs
@@ -416,6 +420,7 @@ class JobStore:
                 salary_max=row["salary_max"],
                 salary_interval=str(row["salary_interval"] or ""),
                 salary_currency=str(row["salary_currency"] or ""),
+                salary_source=str(row["salary_source"] or ""),
                 easy_apply=(
                     None if row["easy_apply"] is None else bool(row["easy_apply"])
                 ),

@@ -93,6 +93,93 @@ def test_mapping_recovers_company_location_and_text_salary():
     )
 
 
+def test_mapping_recovers_english_and_french_description_salary():
+    english = from_mapping(
+        {
+            "title": "AI Operations Engineer",
+            "description": (
+                "Compensation: **C$130,000–C$200,000 annual base salary**."
+            ),
+        }
+    )
+    assert (english.salary_min, english.salary_max, english.salary_interval) == (
+        130000,
+        200000,
+        "yearly",
+    )
+    assert english.salary_currency == "CAD"
+    assert english.salary_source == "description"
+
+    french = from_mapping(
+        {
+            "title": "Ingénieur automatisation",
+            "description": "Salaire : 80\u202f000 $ à 100\u202f000 $ par année.",
+        }
+    )
+    assert (french.salary_min, french.salary_max, french.salary_interval) == (
+        80000,
+        100000,
+        "yearly",
+    )
+
+
+def test_description_hourly_salary_is_annualized():
+    job = from_mapping(
+        {
+            "title": "Technicien",
+            "description": "Taux horaire de 25 $ à 35 $.",
+        },
+        enforce_annual_salary=True,
+    )
+
+    assert (job.salary_min, job.salary_max, job.salary_interval) == (
+        52000,
+        72800,
+        "yearly",
+    )
+
+    posted = from_mapping(
+        {
+            "title": "Consultant",
+            "description": "39,19$ à 55,99$ hourly.",
+        }
+    )
+    assert (posted.salary_min, posted.salary_max, posted.salary_interval) == (
+        39.19,
+        55.99,
+        "hourly",
+    )
+
+
+def test_description_salary_fallback_ignores_unrelated_numbers():
+    job = from_mapping(
+        {
+            "title": "Engineer",
+            "description": "Competitive salary. 5 years of experience. Posted in 2026.",
+        }
+    )
+
+    assert job.salary_min is None
+    assert job.salary_max is None
+    assert job.salary_source == ""
+
+
+def test_structured_salary_remains_authoritative_over_description():
+    job = from_mapping(
+        {
+            "title": "Engineer",
+            "min_amount": 90000,
+            "max_amount": 110000,
+            "interval": "yearly",
+            "currency": "CAD",
+            "description": "Compensation: C$120,000–C$140,000 annual base salary.",
+        }
+    )
+
+    assert (job.salary_min, job.salary_max) == (90000, 110000)
+    assert job.salary_source == "structured"
+
+
 def test_jobspy_queries_run_in_parallel(monkeypatch):
     active = 0
     maximum = 0

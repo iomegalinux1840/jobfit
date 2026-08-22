@@ -23,6 +23,7 @@ def test_pipeline_reports_scan_stages(tmp_path):
     )
     assert any("deterministic query plan generated" in message for message in messages)
     assert any("collected 3 jobs" in message for message in messages)
+    assert any("description fallback" in message for message in messages)
     assert any("duplicate filtering" in message for message in messages)
     assert any("deterministic fit rating" in message for message in messages)
     assert any(message.startswith("LOCAL stage: history diff") for message in messages)

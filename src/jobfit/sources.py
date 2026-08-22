@@ -26,7 +26,52 @@ SITE_LABELS = {
 }
 
 _AMOUNT_PATTERN = re.compile(
-    r"(?<![A-Za-z])([0-9]{1,3}(?:[ ,][0-9]{3})+|[0-9]+(?:\.[0-9]+)?)(?:\s*[kK])?"
+    r"(?<![A-Za-z])(?P<number>[0-9]+,[0-9]{1,2}|[0-9]{1,3}(?:[ ,\u00a0\u202f][0-9]{3})+|[0-9]+(?:\.[0-9]+)?)(?P<suffix>\s*[kK])?(?![A-Za-z0-9])"
+)
+
+_SALARY_CONTEXT_PATTERN = re.compile(
+    r"(?ix)"
+    r"salary|salaries|compensation|pay\s+range|pay\s+rate|wage|wages|"
+    r"remuneration|salaire|rémunération|taux\s+horaire|rémunération"
+)
+_SALARY_CURRENCY_PATTERN = re.compile(
+    r"(?ix)\b(?:cad|can|ca|usd|eur|gbp)\b|(?:c|ca|us)\$|[$€£]"
+)
+_SALARY_INTERVAL_PATTERNS = (
+    (
+        "hourly",
+        re.compile(
+            r"(?ix)\b(?:hourly|per\s+hour|/\s*h(?:our)?s?|hr\.?|heure?s?|horaire|par\s+heure|/\s*heure)\b"
+        ),
+    ),
+    (
+        "monthly",
+        re.compile(
+            r"(?ix)\b(?:monthly|per\s+month|/\s*months?|month|mensuel(?:le)?|par\s+mois|/\s*mois)\b"
+        ),
+    ),
+    (
+        "weekly",
+        re.compile(
+            r"(?ix)\b(?:weekly|per\s+week|/\s*weeks?|week|hebdomadaire|par\s+semaine|/\s*semaine)\b"
+        ),
+    ),
+    (
+        "daily",
+        re.compile(
+            r"(?ix)\b(?:daily|per\s+day|/\s*days?|day|quotidien(?:ne)?|par\s+jour|/\s*jour)\b"
+        ),
+    ),
+    (
+        "yearly",
+        re.compile(
+            r"(?ix)\b(?:annual(?:ly)?|yearly|per\s+year|/\s*years?|yr\.?|"
+            r"annuel(?:le)?|annuellement|par\s+année|par\s+an|/\s*an(?:née)?)\b"
+        ),
+    ),
+)
+_SALARY_RANGE_PATTERN = re.compile(
+    r"(?i)(?:-|–|—|\bto\b|\bà\b|\bbetween\b.{0,40}\band\b)"
 )
 
 
@@ -42,6 +87,20 @@ def _text(value: object) -> str:
     return "" if text.casefold() in {"nan", "none", "nat", "<na>"} else text
 
 
+def _amount_match_value(match: re.Match[str]) -> float:
+    number = (
+        match.group("number")
+        .replace(" ", "")
+        .replace("\u00a0", "")
+        .replace("\u202f", "")
+    )
+    if "," in number and len(number.rsplit(",", 1)[1]) <= 2:
+        amount = float(number.replace(",", "."))
+    else:
+        amount = float(number.replace(",", ""))
+    return amount * 1000 if match.group("suffix") else amount
+
+
 def _number(value: object) -> float | None:
     text = _text(value).replace("$", "").replace("€", "").replace("£", "")
     if not text:
@@ -49,18 +108,14 @@ def _number(value: object) -> float | None:
     match = _AMOUNT_PATTERN.search(text)
     if not match:
         return None
-    amount = float(match.group(1).replace(",", "").replace(" ", ""))
-    suffix = match.group(0).rstrip().casefold()
-    return amount * 1000 if suffix.endswith("k") else amount
+    return _amount_match_value(match)
 
 
 def _numbers(value: object) -> list[float]:
     text = _text(value).replace("$", "").replace("€", "").replace("£", "")
     values = []
     for match in _AMOUNT_PATTERN.finditer(text):
-        amount = float(match.group(1).replace(",", "").replace(" ", ""))
-        suffix = match.group(0).rstrip().casefold()
-        values.append(amount * 1000 if suffix.endswith("k") else amount)
+        values.append(_amount_match_value(match))
     return values
 
 
@@ -83,7 +138,103 @@ def _remote(value: object) -> bool | None:
     return None
 
 
-def _salary(row: dict) -> tuple[float | None, float | None]:
+def _salary_currency(value: str) -> str:
+    tokens = [
+        match.group(0).casefold() for match in _SALARY_CURRENCY_PATTERN.finditer(value)
+    ]
+    for token in tokens:
+        if token in {"cad", "can", "ca", "c$", "ca$"}:
+            return "CAD"
+        if token in {"usd", "us$"}:
+            return "USD"
+        if token == "eur":
+            return "EUR"
+        if token == "gbp":
+            return "GBP"
+    if not tokens:
+        return ""
+    token = tokens[0]
+    return {"€": "EUR", "£": "GBP"}.get(token, "")
+
+
+def _salary_interval_from_text(value: str) -> str:
+    for interval, pattern in _SALARY_INTERVAL_PATTERNS:
+        if pattern.search(value):
+            return interval
+    return ""
+
+
+def _salary_values_from_line(value: str) -> list[float]:
+    """Return likely pay values from one salary-related description line.
+
+    Description text contains many unrelated numbers (years of experience,
+    dates, vacancy counts). We only accept small hourly-like values when they
+    are explicitly currency-marked; annual and larger values must be at least
+    10,000 unless currency-marked. This keeps the fallback useful without
+    treating every number as pay.
+    """
+
+    interval = _salary_interval_from_text(value)
+    minimum_by_interval = {
+        "": 10000,
+        "yearly": 10000,
+        "monthly": 1000,
+        "weekly": 200,
+        "daily": 50,
+        "hourly": 10,
+    }
+    values = []
+    for match in _AMOUNT_PATTERN.finditer(value):
+        amount = _amount_match_value(match)
+        before = value[max(0, match.start() - 8) : match.start()]
+        after = value[match.end() : min(len(value), match.end() + 8)]
+        explicitly_marked = bool(
+            re.search(r"(?ix)(?:cad|usd|eur|gbp|c\$|ca\$|us\$|[$€£])\s*$", before)
+            or re.search(r"(?ix)^\s*(?:cad|usd|eur|gbp\b|[$€£])", after)
+        )
+        if (
+            amount >= minimum_by_interval[interval]
+            or explicitly_marked
+            or (interval == "hourly" and amount <= 350)
+        ):
+            values.append(amount)
+    if len(values) > 1 and not _SALARY_RANGE_PATTERN.search(value):
+        return values[:1]
+    return values
+
+
+def _salary_from_description(row: dict) -> tuple[float | None, float | None, str, str]:
+    description = _first_text(row, "description", "job_description", "summary")
+    if not description:
+        return None, None, "", ""
+
+    # Salary disclosures are normally a single markdown/HTML line. Looking
+    # line-by-line avoids accidentally pairing a salary keyword with unrelated
+    # numbers from a distant paragraph.
+    for raw_line in re.split(r"[\r\n]+", description):
+        line = re.sub(r"[\\*_`]|&nbsp;", "", raw_line).strip()
+        has_salary_context = bool(_SALARY_CONTEXT_PATTERN.search(line))
+        has_explicit_interval = bool(_salary_interval_from_text(line))
+        has_currency = bool(_SALARY_CURRENCY_PATTERN.search(line))
+        if (
+            not line
+            or not has_salary_context
+            and not (has_explicit_interval and has_currency)
+        ):
+            continue
+        values = _salary_values_from_line(line)
+        if not values:
+            continue
+        return (
+            values[0],
+            values[1] if len(values) > 1 else None,
+            _salary_interval_from_text(line),
+            _salary_currency(line),
+        )
+    return None, None, "", ""
+
+
+def _salary(row: dict) -> tuple[float | None, float | None, str, str, str]:
     minimum = _number(
         row.get("min_amount")
         or row.get("min_salary")
@@ -96,8 +247,7 @@ def _salary(row: dict) -> tuple[float | None, float | None]:
         or row.get("salary_max")
         or row.get("compensation_max")
     )
-    if minimum is not None and maximum is not None:
-        return minimum, maximum
+    structured = minimum is not None or maximum is not None
     salary_text = _first_text(
         row, "salary", "salary_range", "salary_description", "compensation"
     )
@@ -106,7 +256,29 @@ def _salary(row: dict) -> tuple[float | None, float | None]:
         minimum = values[0]
     if maximum is None and len(values) > 1:
         maximum = values[1]
-    return minimum, maximum
+    text_source = bool(values)
+    description_min, description_max, description_interval, description_currency = (
+        _salary_from_description(row)
+    )
+    if minimum is None:
+        minimum = description_min
+    if maximum is None:
+        maximum = description_max
+    interval = _first_text(row, "interval", "salary_interval", "pay_period")
+    if not interval:
+        interval = description_interval
+    currency = _first_text(row, "currency", "salary_currency") or description_currency
+    if structured and text_source:
+        source = "structured+salary_text"
+    elif structured:
+        source = "structured"
+    elif text_source:
+        source = "salary_text"
+    elif description_min is not None or description_max is not None:
+        source = "description"
+    else:
+        source = ""
+    return minimum, maximum, interval, currency, source
 
 
 def _annualize(
@@ -159,8 +331,13 @@ def from_mapping(
     url = _first_text(row, "job_url", "url", "link")
     stable = url or "|".join(_text(value) for value in (title, company, location))
     job_id = f"{source}:{stable.lower()}"
-    salary_min, salary_max = _salary(row)
-    salary_interval = _first_text(row, "interval", "salary_interval", "pay_period")
+    (
+        salary_min,
+        salary_max,
+        salary_interval,
+        detected_currency,
+        detected_salary_source,
+    ) = _salary(row)
     if enforce_annual_salary:
         salary_min, salary_max, salary_interval = _annualize(
             salary_min, salary_max, salary_interval
@@ -178,8 +355,12 @@ def from_mapping(
         salary_min=salary_min,
         salary_max=salary_max,
         salary_interval=salary_interval,
-        salary_currency=_first_text(row, "currency", "salary_currency"),
-        salary_source=_first_text(row, "salary_source", "salary_basis"),
+        salary_currency=(
+            _first_text(row, "currency", "salary_currency") or detected_currency
+        ),
+        salary_source=(
+            _first_text(row, "salary_source", "salary_basis") or detected_salary_source
+        ),
         easy_apply=_remote(row.get("easy_apply")),
         latitude=_number(row.get("latitude") or row.get("lat")),
         longitude=_number(row.get("longitude") or row.get("lon") or row.get("lng")),

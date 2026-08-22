@@ -49,6 +49,22 @@ def test_store_loads_deduplicated_history_with_saved_company_state(tmp_path):
     assert history[0].job.description
 
 
+def test_store_persists_salary_provenance(tmp_path):
+    store = JobStore(str(tmp_path / "salary-source.sqlite"))
+    result = _result()
+    result.job.salary_min = 80000
+    result.job.salary_max = 100000
+    result.job.salary_interval = "yearly"
+    result.job.salary_currency = "CAD"
+    result.job.salary_source = "description"
+    store.record_run(1, [result])
+
+    history = store.load_history()
+    store.close()
+
+    assert history[0].job.salary_source == "description"
+
+
 def test_saved_and_blocked_companies_are_persistent(tmp_path):
     store = JobStore(str(tmp_path / "preferences.sqlite"))
     assert store.toggle_saved_company(" Acme  Inc. ") is True

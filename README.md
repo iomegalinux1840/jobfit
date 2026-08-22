@@ -142,11 +142,16 @@ Job statuses mean:
 - `SEEN`: the job was fetched again without meaningful changes; it is kept in
   history but omitted from the diff view.
 
-Salary and company values are source-dependent. JobFit now accepts JobSpy's
+Salary and company values are source-dependent. JobFit accepts JobSpy's
 standard fields plus common employer/company aliases and salary text such as
-`$80k - $100k`; a job remains blank when the source did not publish that
-information. See the [JobSpy source schema](https://github.com/speedyapply/JobSpy#jobpost-schema)
-for the fields available from each job board.
+`$80k - $100k`. Structured JobSpy compensation is preferred; when it is absent,
+JobFit performs a conservative local fallback over salary-related description
+lines in English and French (including annual, monthly, weekly, daily, and
+hourly forms). The scan log reports whether each salary came from structured
+source data or this description fallback. Ambiguous numbers and unqualified
+currency symbols are left alone rather than guessed. See the [JobSpy source
+schema](https://github.com/speedyapply/JobSpy#jobpost-schema) for the fields
+available from each job board.
 
 ## Design
 
