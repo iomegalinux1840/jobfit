@@ -161,6 +161,8 @@ def run_pipeline(
             store=store,
             progress=report,
         )
+        timed("distance filtering", started)
+        started = time.perf_counter()
         blocked = store.blocked_companies()
         eligible_jobs = [
             job for job in distance_jobs if company_key(job.company) not in blocked
@@ -169,12 +171,14 @@ def run_pipeline(
             "LOCAL stage: blocking — "
             f"{len(distance_jobs) - len(eligible_jobs)} jobs from blocked companies removed"
         )
+        timed("blocking", started)
+        started = time.perf_counter()
         scored = [score_job(profile, job) for job in eligible_jobs]
         scored.sort(key=lambda result: (-result.score, result.job.title.lower()))
         report(
             f"LOCAL stage: deterministic fit rating — {len(scored)} jobs rated; no LLM"
         )
-        timed("filtering and deterministic scoring", started)
+        timed("deterministic scoring", started)
         started = time.perf_counter()
         summary = store.record_run(len(jobs), scored)
         saved = store.saved_companies()

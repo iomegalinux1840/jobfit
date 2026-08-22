@@ -254,6 +254,14 @@ class JobStore:
             return None
         return float(row[0]), float(row[1])
 
+    def has_geocode(self, query_key: str) -> bool:
+        return (
+            self.connection.execute(
+                "SELECT 1 FROM geocode_cache WHERE query_key = ?", (query_key,)
+            ).fetchone()
+            is not None
+        )
+
     def save_geocode(self, query_key: str, point: tuple[float, float] | None) -> None:
         latitude, longitude = point if point is not None else (None, None)
         self.connection.execute(

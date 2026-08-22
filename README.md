@@ -107,13 +107,16 @@ results per source, parallel workers, Indeed country, `Easy Apply only`, and
 annual-salary normalization. You can also enable full LinkedIn description
 fetching, which is slower but gives JobSpy more text from which to recover
 salary information. These settings are saved in the local SQLite database and
-reused on the next launch. The results table opens in `DIFF` mode and shows
-new or updated jobs. Press `V` to toggle to `ALL HISTORY`, which loads the
-deduplicated jobs persisted in SQLite, including jobs not returned by the
-latest scan. Running a new scan returns the table to `DIFF` mode. Locations
-are geocoded only when the distance filter is enabled, cached in SQLite, and
-jobs with unknown distance
-remain visible with `—` so the app does not silently discard them. Press `R`
+reused on the next launch. When a scan starts, the table immediately loads the
+deduplicated saved history so it remains navigable while collection and
+analysis run in the background. After the scan completes, the table switches to
+`DIFF` mode and shows new or updated jobs. Press `V` to toggle to `ALL HISTORY`,
+which loads the deduplicated jobs persisted in SQLite, including jobs not
+returned by the latest scan. Locations are geocoded only when the distance
+filter is enabled, cached in SQLite (including failed lookups), and jobs with
+unknown distance remain visible with `—` so the app does not silently discard
+them. The progress log reports distance-filter timing, unique locations,
+geocoder requests, and cache hits. Press `R`
 to re-run, `P` to focus the provider selector, `V` to toggle diff/history, use
 the arrow keys to select a job, press `Space` to save or unsave its company,
 press `D` to remove the row or block its company, and press `Enter` to open its

@@ -44,6 +44,8 @@ class NominatimGeocoder:
         self.progress = progress
         self.min_interval = min_interval
         self.last_request = 0.0
+        self.cache_hits = 0
+        self.network_requests = 0
         self.endpoint = os.getenv(
             "JOBFIT_GEOCODER_URL", "https://nominatim.openstreetmap.org/search"
         )
@@ -54,7 +56,11 @@ class NominatimGeocoder:
             return None
         cached = self.store.get_geocode(query_key)
         if cached is not None:
+            self.cache_hits += 1
             return GeoPoint(*cached)
+        if self.store.has_geocode(query_key):
+            self.cache_hits += 1
+            return None
 
         wait = self.min_interval - (time.monotonic() - self.last_request)
         if wait > 0:
@@ -66,6 +72,7 @@ class NominatimGeocoder:
             f"{self.endpoint}?{params}",
             headers={"User-Agent": "jobfit/0.1 open-source job radar"},
         )
+        self.network_requests += 1
         try:
             with urllib.request.urlopen(request, timeout=15) as response:
                 payload = json.loads(response.read().decode("utf-8"))
@@ -111,22 +118,53 @@ def filter_jobs_by_distance(
     if not origin or not origin.strip():
         raise ValueError("A distance origin is required with --max-distance-km")
 
+    non_remote = [
+        job
+        for job in jobs
+        if job.is_remote is not True and "remote" not in job.location.casefold()
+    ]
+    unique_locations = {_key(job.location) for job in non_remote if _key(job.location)}
+    if progress:
+        progress(
+            f"LOCAL stage: distance filter starting — {len(non_remote)} non-remote jobs, "
+            f"{len(unique_locations)} unique locations; public geocoder requests are rate-limited"
+        )
+
     geocoder = NominatimGeocoder(store, progress=progress)
     origin_point = geocoder.geocode(origin.strip())
     if origin_point is None:
         raise ValueError(f"Could not geocode distance origin: {origin}")
     if progress:
-        progress(f"LOCAL stage: distance origin resolved as {origin.strip()}")
+        progress(
+            f"LOCAL stage: distance origin resolved as {origin.strip()} — "
+            f"{len(non_remote)} non-remote jobs, {len(unique_locations)} unique locations"
+        )
 
     kept: list[JobPosting] = []
     removed = unknown = 0
+    location_points: dict[str, GeoPoint | None] = {}
     for job in jobs:
         location_lower = job.location.casefold()
         if job.is_remote is True or "remote" in location_lower:
             job.distance_km = None
             kept.append(job)
             continue
-        point = _point_from_job(job) or geocoder.geocode(job.location)
+        location_key = _key(job.location)
+        point = _point_from_job(job)
+        if point is None:
+            if location_key not in location_points:
+                location_points[location_key] = geocoder.geocode(job.location)
+                if (
+                    progress
+                    and geocoder.network_requests
+                    and geocoder.network_requests % 10 == 0
+                ):
+                    progress(
+                        "LOCAL stage: distance geocoding progress — "
+                        f"{geocoder.network_requests} network requests, "
+                        f"{geocoder.cache_hits} cache hits"
+                    )
+            point = location_points[location_key]
         if point is None:
             unknown += 1
             kept.append(job)
@@ -139,6 +177,7 @@ def filter_jobs_by_distance(
     if progress:
         progress(
             f"LOCAL stage: distance filter — {removed} non-remote jobs removed; "
-            f"{unknown} jobs kept with unknown distance"
+            f"{unknown} jobs kept with unknown distance; "
+            f"geocoder requests {geocoder.network_requests}, cache hits {geocoder.cache_hits}"
         )
     return kept

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -436,7 +437,10 @@ class JobSpySource:
                 f"({workers} workers)"
             )
 
-        def fetch_one(index: int, query: QuerySpec) -> tuple[int, list[JobPosting]]:
+        def fetch_one(
+            index: int, query: QuerySpec
+        ) -> tuple[int, list[JobPosting], float]:
+            started = time.perf_counter()
             kwargs = {
                 "site_name": self.sites,
                 "search_term": query.search_term,
@@ -471,7 +475,7 @@ class JobSpySource:
                         enforce_annual_salary=self.enforce_annual_salary,
                     )
                 )
-            return index, jobs
+            return index, jobs, time.perf_counter() - started
 
         collected: list[JobPosting] = []
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -480,12 +484,12 @@ class JobSpySource:
                 for index, query in enumerate(query_list, start=1)
             ]
             for future in as_completed(futures):
-                index, jobs = future.result()
+                index, jobs, elapsed = future.result()
                 collected.extend(jobs)
                 if progress:
                     progress(
                         f"SOURCE stage: JobSpy query {index}/{len(query_list)} complete — "
-                        f"{len(jobs)} jobs"
+                        f"{len(jobs)} jobs in {elapsed:.2f}s"
                     )
         return collected
 

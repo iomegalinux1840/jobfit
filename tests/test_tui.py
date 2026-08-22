@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 from jobfit.models import FitResult, JobPosting, Profile, RunSummary
 from jobfit.store import JobStore
@@ -15,6 +16,10 @@ def test_tui_saves_and_blocks_selected_company(tmp_path):
 
 def test_tui_toggles_between_diff_and_all_history(tmp_path):
     asyncio.run(_exercise_history_toggle(tmp_path / "history.sqlite"))
+
+
+def test_tui_keeps_history_navigable_during_scan(tmp_path):
+    asyncio.run(_exercise_history_during_scan(tmp_path / "history.sqlite"))
 
 
 async def _exercise_tui():
@@ -161,5 +166,60 @@ async def _exercise_history_toggle(database_path):
 
         await pilot.press("v")
         await pilot.pause()
+        assert app.query_one("#jobs").row_count == 1
+        assert "DIFF" in str(app.query_one("#brand").render())
+
+
+async def _exercise_history_during_scan(database_path):
+    previous = FitResult(
+        JobPosting(
+            "fixture:previous",
+            "fixture",
+            "Saved Automation Engineer",
+            "Acme",
+            location="Montreal",
+            description="Python automation",
+        ),
+        score=82,
+        change_status="HISTORY",
+    )
+    store = JobStore(str(database_path))
+    store.record_run(1, [previous])
+    store.close()
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def execute(progress, provider, settings):
+        started.set()
+        assert release.wait(2)
+        current = FitResult(
+            JobPosting(
+                "fixture:current",
+                "fixture",
+                "New Automation Engineer",
+                "Northstar",
+                location="Quebec",
+            ),
+            score=91,
+            change_status="NEW",
+        )
+        return Profile(name="Test Candidate"), RunSummary(2, 1, 1, 1, 0, 0, [current])
+
+    app = build_textual_app(execute, database_path=str(database_path))()
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        assert started.is_set()
+        assert app.query_one("#jobs").row_count == 1
+        assert "ALL HISTORY" in str(app.query_one("#brand").render())
+
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.query_one("#detail").display is True
+        await pilot.press("enter")
+        assert app.query_one("#detail").display is False
+
+        release.set()
+        await pilot.pause(0.3)
         assert app.query_one("#jobs").row_count == 1
         assert "DIFF" in str(app.query_one("#brand").render())

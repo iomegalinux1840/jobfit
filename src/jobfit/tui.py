@@ -365,14 +365,28 @@ def build_textual_app(
             if self.scan_active:
                 return
             self.scan_active = True
-            self.view_mode = "diff"
             self.diff_results = []
-            self.last_results = []
             self.query_one("#progress", Log).clear()
-            self.query_one("#jobs", DataTable).clear()
             self.query_one("#detail", Static).display = False
             self.query_one("#jobs", DataTable).display = True
             self.query_one("#progress", Log).display = True
+            if database_path:
+                store = JobStore(database_path)
+                try:
+                    self.last_results = store.load_history()
+                finally:
+                    store.close()
+                self.view_mode = "all"
+                self._populate_table()
+                self._update_view_brand()
+                self._append_progress(
+                    f"History loaded: {len(self.last_results)} saved jobs remain navigable"
+                )
+            else:
+                self.view_mode = "diff"
+                self.last_results = []
+                self.query_one("#jobs", DataTable).clear()
+                self._update_view_brand()
             provider = self.selected_provider
             self._append_progress(f"Provider selected: {provider_label(provider)}")
             self._append_progress(
