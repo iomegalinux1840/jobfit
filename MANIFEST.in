@@ -1,0 +1,14 @@
+include README.md LICENSE SECURITY.md CONTRIBUTING.md
+recursive-include src/jobfit *.py
+recursive-include examples *.txt
+recursive-include fixtures *.json
+prune data
+prune private
+prune resumes
+prune credentials
+prune secrets
+prune outputs
+prune conversations
+prune .codex
+prune .claude
+global-exclude *.sqlite *.sqlite3 *.db *.log *.jsonl *.docx *.pdf *.pem *.key .env

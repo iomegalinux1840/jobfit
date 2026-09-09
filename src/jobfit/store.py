@@ -10,6 +10,8 @@ from pathlib import Path
 from .models import FitResult, JobPosting, RunSummary, ScanSettings
 from .scoring import SCORE_VERSION
 
+GEOCODE_NEGATIVE_TTL_SECONDS = 24 * 60 * 60
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -247,20 +249,46 @@ class JobStore:
 
     def get_geocode(self, query_key: str) -> tuple[float, float] | None:
         row = self.connection.execute(
-            "SELECT latitude, longitude FROM geocode_cache WHERE query_key = ?",
+            "SELECT latitude, longitude, resolved_at FROM geocode_cache WHERE query_key = ?",
             (query_key,),
         ).fetchone()
-        if row is None or row[0] is None or row[1] is None:
+        if row is None:
+            return None
+        if row[0] is None or row[1] is None:
+            if self._negative_geocode_is_expired(row[2]):
+                self._delete_geocode(query_key)
             return None
         return float(row[0]), float(row[1])
 
     def has_geocode(self, query_key: str) -> bool:
-        return (
-            self.connection.execute(
-                "SELECT 1 FROM geocode_cache WHERE query_key = ?", (query_key,)
-            ).fetchone()
-            is not None
+        row = self.connection.execute(
+            "SELECT latitude, longitude, resolved_at FROM geocode_cache WHERE query_key = ?",
+            (query_key,),
+        ).fetchone()
+        if row is None:
+            return False
+        if (row[0] is None or row[1] is None) and self._negative_geocode_is_expired(
+            row[2]
+        ):
+            self._delete_geocode(query_key)
+            return False
+        return True
+
+    def _negative_geocode_is_expired(self, resolved_at: object) -> bool:
+        try:
+            timestamp = datetime.fromisoformat(str(resolved_at))
+        except (TypeError, ValueError):
+            return True
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - timestamp
+        return age.total_seconds() >= GEOCODE_NEGATIVE_TTL_SECONDS
+
+    def _delete_geocode(self, query_key: str) -> None:
+        self.connection.execute(
+            "DELETE FROM geocode_cache WHERE query_key = ?", (query_key,)
         )
+        self.connection.commit()
 
     def save_geocode(self, query_key: str, point: tuple[float, float] | None) -> None:
         latitude, longitude = point if point is not None else (None, None)

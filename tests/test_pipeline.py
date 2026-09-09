@@ -5,6 +5,27 @@ from jobfit.pipeline import run_pipeline
 from jobfit.store import JobStore
 
 
+def test_local_search_also_fetches_countrywide_remote_jobs(monkeypatch, tmp_path):
+    captured = []
+
+    def fetch(self, queries, progress=None):
+        captured.extend(queries)
+        return []
+
+    monkeypatch.setattr("jobfit.pipeline.JobSpySource.fetch", fetch)
+    root = Path(__file__).parents[1]
+    run_pipeline(
+        str(root / "examples" / "resume.txt"),
+        str(tmp_path / "jobs.sqlite"),
+        location="Roberval, QC",
+    )
+    remote = [query for query in captured if query.is_remote is True]
+    local = [query for query in captured if query.is_remote is not True]
+    assert remote and local
+    assert all(query.location == "Canada" for query in remote)
+    assert all(query.location == "Roberval, QC" for query in local)
+
+
 def test_pipeline_reports_scan_stages(tmp_path):
     root = Path(__file__).parents[1]
     messages = []

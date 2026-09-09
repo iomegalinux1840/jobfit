@@ -75,10 +75,17 @@ class NominatimGeocoder:
         self.network_requests += 1
         try:
             with urllib.request.urlopen(request, timeout=15) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except (OSError, ValueError):
-            payload = []
+                response_body = response.read()
+        except OSError:
+            self.last_request = time.monotonic()
+            if self.progress:
+                self.progress(f"WARNING: geocoding request failed for {query}")
+            return None
         self.last_request = time.monotonic()
+        try:
+            payload = json.loads(response_body.decode("utf-8"))
+        except (UnicodeError, ValueError):
+            payload = []
         if not isinstance(payload, list) or not payload:
             self.store.save_geocode(query_key, None)
             return None
@@ -115,8 +122,6 @@ def filter_jobs_by_distance(
         return jobs
     if max_distance_km < 0:
         raise ValueError("Maximum distance must be zero or greater")
-    if not origin or not origin.strip():
-        raise ValueError("A distance origin is required with --max-distance-km")
 
     non_remote = [
         job
@@ -130,10 +135,29 @@ def filter_jobs_by_distance(
             f"{len(unique_locations)} unique locations; public geocoder requests are rate-limited"
         )
 
+    if not non_remote:
+        for job in jobs:
+            job.distance_km = None
+        if progress:
+            progress(
+                "LOCAL stage: distance filter — all fetched jobs are remote; "
+                "skipping distance origin geocoding"
+            )
+        return jobs
+    if not origin or not origin.strip():
+        raise ValueError("A distance origin is required with --max-distance-km")
+
     geocoder = NominatimGeocoder(store, progress=progress)
     origin_point = geocoder.geocode(origin.strip())
     if origin_point is None:
-        raise ValueError(f"Could not geocode distance origin: {origin}")
+        for job in jobs:
+            job.distance_km = None
+        if progress:
+            progress(
+                f"WARNING: Could not geocode distance origin '{origin.strip()}'; "
+                f"keeping {len(jobs)} fetched jobs with unknown distance"
+            )
+        return jobs
     if progress:
         progress(
             f"LOCAL stage: distance origin resolved as {origin.strip()} — "

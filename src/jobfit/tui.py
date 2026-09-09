@@ -488,7 +488,8 @@ def build_textual_app(
                 self.selected_provider = str(event.value)
 
         def _append_progress(self, message: str) -> None:
-            self.query_one("#progress", Log).write_line("[✓] " + message)
+            prefix = "[!] " if message.startswith("WARNING:") else "[✓] "
+            self.query_one("#progress", Log).write_line(prefix + message)
 
         def _progress(self, message: str) -> None:
             self.call_from_thread(self._append_progress, message)
@@ -507,22 +508,38 @@ def build_textual_app(
 
         def _show_results(self, profile: Profile, summary: RunSummary) -> None:
             self.scan_active = False
-            self.view_mode = "diff"
             self.diff_results = list(summary.diff)
-            self.last_results = list(summary.diff)
+            if database_path and self.view_mode == "all":
+                store = JobStore(database_path)
+                try:
+                    history = store.load_history()
+                finally:
+                    store.close()
+                merged = {item.job.job_id: item for item in history}
+                merged.update({item.job.job_id: item for item in summary.diff})
+                self.last_results = sorted(
+                    merged.values(), key=lambda item: (-item.score, item.job.title)
+                )
+            else:
+                self.last_results = list(summary.diff)
             self._populate_table()
-            self._update_view_brand()
+            in_detail = self.query_one("#detail", Static).display
+            if not in_detail:
+                self._update_view_brand()
             self.query_one("#progress", Log).write_line(
                 f"[✓] Difference calculated: {summary.new} new jobs, "
                 f"{summary.updated} updated"
             )
-            self.query_one("#jobs", DataTable).focus()
+            if not in_detail:
+                self.query_one("#jobs", DataTable).focus()
 
         def _update_view_brand(self) -> None:
             label = (
                 "DIFF — NEW / UPDATED" if self.view_mode == "diff" else "ALL HISTORY"
             )
-            self.query_one("#brand", Static).update(f"JOBFIT — {label}")
+            self.query_one("#brand", Static).update(
+                f"JOBFIT — {label} ({len(self.last_results)} jobs) | V: switch All / Diff"
+            )
 
         def action_toggle_view(self) -> None:
             if self.scan_active or self.query_one("#detail", Static).display:

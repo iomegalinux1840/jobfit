@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from jobfit.geo import GeoPoint, NominatimGeocoder, filter_jobs_by_distance
 from jobfit.models import JobPosting
 from jobfit.store import JobStore
@@ -72,3 +74,81 @@ def test_geocoder_reuses_negative_cache(tmp_path, monkeypatch):
         assert geocoder.cache_hits == 1
     finally:
         store.close()
+
+
+def test_expired_negative_geocode_cache_is_retried(tmp_path):
+    store = JobStore(str(tmp_path / "jobs.sqlite"))
+    store.save_geocode("unknown place", None)
+    expired_at = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    store.connection.execute(
+        "UPDATE geocode_cache SET resolved_at = ? WHERE query_key = ?",
+        (expired_at, "unknown place"),
+    )
+    store.connection.commit()
+
+    assert store.get_geocode("unknown place") is None
+    assert store.has_geocode("unknown place") is False
+    store.close()
+
+
+def test_transport_failure_is_not_saved_as_negative_cache(tmp_path, monkeypatch):
+    store = JobStore(str(tmp_path / "jobs.sqlite"))
+    geocoder = NominatimGeocoder(store, min_interval=0)
+
+    def fail_request(*args, **kwargs):
+        raise OSError("temporary network failure")
+
+    monkeypatch.setattr("jobfit.geo.urllib.request.urlopen", fail_request)
+    try:
+        assert geocoder.geocode("Temporary Failure") is None
+        assert geocoder.network_requests == 1
+        assert store.has_geocode("temporary failure") is False
+    finally:
+        store.close()
+
+
+def test_origin_failure_keeps_jobs_with_unknown_distance_and_warns(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("jobfit.geo.NominatimGeocoder.geocode", lambda *args: None)
+    messages = []
+    store = JobStore(str(tmp_path / "jobs.sqlite"))
+    jobs = [
+        JobPosting("local", "fixture", "Local", "Acme", location="Montreal, QC"),
+        JobPosting("remote", "fixture", "Remote", "Remote Co", is_remote=True),
+    ]
+    try:
+        kept = filter_jobs_by_distance(
+            jobs,
+            origin="Montreal, QC",
+            max_distance_km=10,
+            store=store,
+            progress=messages.append,
+        )
+    finally:
+        store.close()
+
+    assert kept == jobs
+    assert all(job.distance_km is None for job in kept)
+    assert any(message.startswith("WARNING:") for message in messages)
+
+
+def test_all_remote_jobs_skip_origin_lookup(tmp_path, monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("all-remote jobs should not geocode the origin")
+
+    monkeypatch.setattr("jobfit.geo.NominatimGeocoder.geocode", fail_if_called)
+    store = JobStore(str(tmp_path / "jobs.sqlite"))
+    jobs = [
+        JobPosting("remote-1", "fixture", "Remote 1", "Acme", is_remote=True),
+        JobPosting("remote-2", "fixture", "Remote 2", "Globex", location="Remote"),
+    ]
+    try:
+        kept = filter_jobs_by_distance(
+            jobs, origin=None, max_distance_km=10, store=store
+        )
+    finally:
+        store.close()
+
+    assert kept == jobs
+    assert all(job.distance_km is None for job in kept)

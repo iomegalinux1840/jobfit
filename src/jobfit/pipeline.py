@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 
 from .agent import build_profile, build_query_plan
 from .geo import filter_jobs_by_distance
-from .models import Profile, RunSummary, ScanSettings
+from .models import Profile, QuerySpec, RunSummary, ScanSettings
 from .privacy import CLOUD_PROVIDERS, redact_for_cloud
 from .resume import load_resume_text
 from .scoring import score_job
@@ -83,6 +83,18 @@ def run_pipeline(
             query.__class__(query.search_term, location, query.is_remote)
             for query in queries
         ]
+    # Remote opportunities need their own country-wide searches: applying the
+    # local search city first prevents distant remote postings being fetched.
+    country = scan_settings.country_indeed if scan_settings else "Canada"
+    local_queries = [query for query in queries if query.is_remote is not True]
+    if profile.remote_preference in {"any", "remote", "hybrid"}:
+        terms = list(dict.fromkeys(query.search_term for query in queries))
+        remote_queries = [QuerySpec(term, country, True) for term in terms]
+        queries = local_queries + remote_queries
+        report(
+            f"Search coverage: {len(local_queries)} local queries; "
+            f"{len(remote_queries)} remote queries across {country}"
+        )
     report(
         f"LOCAL stage: deterministic query plan generated ({len(queries)} queries; no LLM)"
     )

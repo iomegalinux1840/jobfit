@@ -109,8 +109,9 @@ fetching, which is slower but gives JobSpy more text from which to recover
 salary information. These settings are saved in the local SQLite database and
 reused on the next launch. When a scan starts, the table immediately loads the
 deduplicated saved history so it remains navigable while collection and
-analysis run in the background. After the scan completes, the table switches to
-`DIFF` mode and shows new or updated jobs. Press `V` to toggle to `ALL HISTORY`,
+analysis run in the background. After the scan completes, All History stays
+visible and includes the new results. Press `V` to switch to `DIFF` for only
+new or updated jobs, or back to `ALL HISTORY`,
 which loads the deduplicated jobs persisted in SQLite, including jobs not
 returned by the latest scan. Locations are geocoded only when the distance
 filter is enabled, cached in SQLite (including failed lookups), and jobs with
@@ -122,6 +123,17 @@ the arrow keys to select a job, press `Space` to save or unsave its company,
 press `D` to remove the row or block its company, and press `Enter` to open its
 detail page or return to the results. Saved companies are shown in bold;
 blocked companies are excluded from later scans.
+
+Searches include local queries at the configured search location and separate
+remote queries across the configured country when the profile allows remote
+work. Remote jobs bypass the distance limit. If the origin cannot be resolved,
+the scan warns that distance filtering is unavailable and retains results for
+review. Failed lookups expire after 24 hours; temporary network errors are not
+saved as permanent failures.
+
+The included resume and fixture companies are fictional demo data. Personal
+resumes, databases, credentials, logs, and agent conversations belong outside
+version control and are not required to run the public demo.
 
 The results table includes the normalized source (`SOURCE`), remote status,
 easy-apply flag, distance, and salary. With annual normalization enabled,

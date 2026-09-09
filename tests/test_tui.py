@@ -160,11 +160,6 @@ async def _exercise_history_toggle(database_path):
     )()
     async with app.run_test() as pilot:
         await pilot.pause(0.2)
-        assert app.query_one("#jobs").row_count == 1
-        assert "DIFF" in str(app.query_one("#brand").render())
-
-        await pilot.press("v")
-        await pilot.pause()
         assert app.query_one("#jobs").row_count == 2
         assert "ALL HISTORY" in str(app.query_one("#brand").render())
 
@@ -172,6 +167,11 @@ async def _exercise_history_toggle(database_path):
         await pilot.pause()
         assert app.query_one("#jobs").row_count == 1
         assert "DIFF" in str(app.query_one("#brand").render())
+
+        await pilot.press("v")
+        await pilot.pause()
+        assert app.query_one("#jobs").row_count == 2
+        assert "ALL HISTORY" in str(app.query_one("#brand").render())
 
 
 async def _exercise_history_during_scan(database_path):
@@ -225,5 +225,5 @@ async def _exercise_history_during_scan(database_path):
 
         release.set()
         await pilot.pause(0.3)
-        assert app.query_one("#jobs").row_count == 1
-        assert "DIFF" in str(app.query_one("#brand").render())
+        assert app.query_one("#jobs").row_count == 2
+        assert "ALL HISTORY" in str(app.query_one("#brand").render())

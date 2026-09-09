@@ -1,5 +1,7 @@
+from datetime import datetime, timedelta, timezone
+
 from jobfit.models import FitResult, JobPosting, ScanSettings
-from jobfit.store import JobStore
+from jobfit.store import GEOCODE_NEGATIVE_TTL_SECONDS, JobStore
 
 
 def _result(description="Python and automation"):
@@ -109,3 +111,25 @@ def test_scan_settings_are_persistent(tmp_path):
     assert settings.easy_apply_only is True
     assert settings.enforce_annual_salary is False
     assert settings.linkedin_fetch_description is False
+
+
+def test_negative_geocode_cache_expires_after_ttl(tmp_path):
+    store = JobStore(str(tmp_path / "geocode-cache.sqlite"))
+    store.save_geocode("unknown place", None)
+    expired_at = (
+        datetime.now(timezone.utc) - timedelta(seconds=GEOCODE_NEGATIVE_TTL_SECONDS + 1)
+    ).isoformat()
+    store.connection.execute(
+        "UPDATE geocode_cache SET resolved_at = ? WHERE query_key = ?",
+        (expired_at, "unknown place"),
+    )
+    store.connection.commit()
+
+    assert store.has_geocode("unknown place") is False
+    assert (
+        store.connection.execute(
+            "SELECT 1 FROM geocode_cache WHERE query_key = ?", ("unknown place",)
+        ).fetchone()
+        is None
+    )
+    store.close()

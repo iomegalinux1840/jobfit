@@ -26,3 +26,13 @@ secrets/
 *.pfx
 resumes/
 private/
+*.log
+*.jsonl
+*.docx
+*.pdf
+.codex/
+.claude/
+conversations/
+outputs/
+*.sqlite-wal
+*.sqlite-shm
